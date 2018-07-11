@@ -1,0 +1,139 @@
+---
+title: "Machine Learning"
+author: "Varishu Pant"
+date: "10 July 2018"
+output: 
+  html_document:
+    keep_md: true
+---
+
+##Setup & Loading Required Packages
+
+```{r}
+setwd("C:/Users/acer/Desktop/R Stuff")
+library(caret)
+library(rattle)
+library(corrplot)
+```
+
+##Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, my goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+##Synopsis
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. I can use any of the other variables to predict with, use cross validation,find the expected out of sample error and use my prediction model to predict 20 different test cases.
+
+###Exploratory Analysis
+
+Downloading and loading data in R.
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","testing.csv")
+training<-read.csv("training.csv")
+testing<-read.csv("testing.csv")
+dim(training)
+```
+We see our data has 160 variables including the outcome variable classe and a total of 19622 observations.
+
+```{r}
+str(training$classe)
+```
+So we see there are 5 different Classes namely A,B,C,D, and E.
+
+##Cleaning Data
+
+First we partition our data into 2 sets ,one for training our model and the other for cross validating it.
+
+```{r}
+set.seed(999)
+inTrain<-createDataPartition(training$classe,p=0.60,list=FALSE)
+train<-training[inTrain,]
+test<-training[-inTrain,]
+```
+
+Since our data is still huge,we start by removing Near Zero Variables from both train and test.
+
+```{r}
+ZeroVar<-nearZeroVar(train,saveMetrics = TRUE)
+train<-train[,ZeroVar$nzv==FALSE]
+test<-test[,ZeroVar$nzv==FALSE]
+str(train)
+```
+
+Next,we remove indicator variables.
+
+```{r}
+train<-train[,-(1:5)]
+test<-test[,-(1:5)]
+str(train)
+```
+
+We notice that a lot of variables are constituted mostly of missing values.Hence we remove those variables from both train and test sets.
+
+```{r}
+MaxNAs<-sapply(train,function(x)mean(is.na(x)))>0.95
+train<-train[,MaxNAs==FALSE]
+test<-test[,MaxNAs==FALSE]
+dim(train)
+dim(test)
+mean(is.na(train))
+mean(is.na(test))
+```
+We see that some NAs are still left,so we go to Pre Processing.
+
+##Pre Processing Data
+
+Here we use K-means Method to impute missing values left in data.
+
+```{r}
+IntClasses<-sapply(train,function(x)class(x))=="integer"
+train[,IntClasses]<-sapply(train[,IntClasses],function(x)as.numeric(x))
+test[,IntClasses]<-sapply(test[,IntClasses],function(x)as.numeric(x))
+Proc<-preProcess(train[,-54],method="knnImpute")
+trainPC<-predict(Proc,train)
+testPC<-predict(Proc,test)
+mean(is.na(train))
+mean(is.na(test))
+```
+
+##Correlation
+
+We Plot a correlation matrix to check whether variables are highly correlated with each other.
+```{r}
+Cor<-cor(trainPC[,-54])
+corrplot(Cor,"color",type="upper")
+```
+We move on with fitting every variable as a predictor.
+
+##Fitting Models
+
+Now we use different methods to fit a regression model and train it for better accuracy.
+
+###R-Part Method
+
+```{r}
+
+fit_rpart<-train(classe~.,method="rpart",data=trainPC)
+fancyRpartPlot(fit_rpart$finalModel)
+pred_rpart<-predict(fit_rpart,testPC)
+confusionMatrix(pred_rpart,testPC$classe)
+```
+Using R-part, we see that this model predicts with an accuracy of 52% and has an out of sample error of 47.8% .This is not a good prediction model.
+
+###Random Forests Method
+
+```{r}
+fit_rf<-train(classe~.,method="rf",data=trainPC,trControl=trainControl(method="cv",number=3,verboseIter=FALSE))
+pred_rf<-predict(fit_rf,testPC)
+confusionMatrix(pred_rf,testPC$classe)
+```
+Using Random forests method, we see that this model predicts with an accuracy of 99.7% and has an out of sample error of 0.3%.This is a good prediction model,and we'll call it our best fit model.
+
+##Predicting on Test Set
+
+Now we use our best fit model to predict values using testing set as newdata.
+
+```{r}
+predict(fit_rf,newdata=testing)
+```
