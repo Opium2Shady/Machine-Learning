@@ -1,2 +1,2 @@
 # Machine-Learning
-Learning Applied Machine Learning in R
+Applied Machine Learning with RStudio
